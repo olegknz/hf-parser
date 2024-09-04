@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Data Extractor3
+// @name         SP_cook6
 // @namespace    http://tampermonkey.net/
 // @version      0.95
 // @description  Extract data from links and save to Excel
-// @author       Sergei and Oleg
+// @author       Oleg Knyazev
 // @match        *://avito.huntflow.ru/*
 // @updateURL    https://github.com/emilia-hr/hf/raw/main/data.extr.script.user.js
 // @downloadURL  https://github.com/emilia-hr/hf/raw/main/data.extr.script.user.js
@@ -76,42 +76,119 @@
 
     setTimeout(addButton, 3000);
 
-    async function loadPagesAndExtractData(elements, numberToLoad) {
-        var data = [];
-        for (var i = 0; i < numberToLoad; i++) {
-            var element = elements[i];
-            await clickElementAndWaitForLoad(element);
-            data.push(extractData(document));
-            await navigateBack();
+    async function clickElementAndWaitForLoad(element) {
+    return new Promise((resolve) => {
+        element.click();
+        var checkExist = setInterval(function() {
+            var titleElement = document.querySelector('h1[data-qa="applicant-card-title"]');
+            if (titleElement) {
+                clearInterval(checkExist);
+                setTimeout(() => {
+                    resolve();
+                }, 1000);
+            }
+        }, 500);
+    });
+}
+
+async function loadPagesAndExtractData(elements, numberToLoad) {
+    var data = [];
+    for (var i = 0; i < numberToLoad; i++) {
+        var element = elements[i];
+        window.firstAddedDate = 'N/A'; // Reset the date before processing a new page
+        await clickElementAndWaitForLoad(element);
+        await ensurePersonalNotesOpen(); // Ensure the Personal Notes section is open
+        const extractedData = await extractDataWithComments(document);
+        data.push(extractedData);
+        await navigateBack();
+    }
+
+    console.log('HF_SE: Data loaded from all pages');
+    generateExcel(data);
+}
+
+
+async function ensurePersonalNotesOpen() {
+    return new Promise((resolve) => {
+        var personalNotesTab = document.querySelector('a#tab-note');
+        if (personalNotesTab) {
+            personalNotesTab.click();
+            console.log('HF_SE: Personal Notes tab clicked');
+
+            // Function to click "Load more" within Personal Notes until it's no longer available
+            function clickLoadMoreButton() {
+                return new Promise((resolve) => {
+                    var personalNotesSection = document.querySelector('div[data-qa="applicant_comments"]');
+                    if (personalNotesSection) {
+                        var loadMoreButton = personalNotesSection.querySelector('button.moreButton--JZye3');
+                        if (loadMoreButton) {
+                            loadMoreButton.click();
+                            console.log('HF_SE: "Load more" button clicked in Personal Notes section');
+                            setTimeout(() => {
+                                resolve(clickLoadMoreButton()); // Recursively click until no more button
+                            }, 1000); // Wait for the content to load
+                        } else {
+                            resolve(); // No more button to click
+                        }
+                    } else {
+                        resolve(); // Personal Notes section not found
+                    }
+                });
+            }
+
+            // Wait for the content to load by adding a delay and clicking "Load more" if necessary
+            setTimeout(async () => {
+                await clickLoadMoreButton();
+                console.log('HF_SE: All "Load more" clicks completed or no button found');
+                resolve();
+            }, 3000); // 3-second delay to ensure initial content loads
+        } else {
+            resolve(); // If tab not found, resolve immediately
+        }
+    });
+}
+
+async function extractDataWithComments(doc) {
+    // Open comments in all vacancies first
+    await openVacancyComments();
+
+    // Now extract the data after ensuring all comments are visible
+    return extractData(doc);
+}
+
+
+async function openVacancyComments() {
+    var vacancyItems = document.querySelectorAll('li[data-qa="applicant_vacancy"]');
+    console.log('HF_SE: Number of vacancies found:', vacancyItems.length);
+
+    for (var i = 0; i < vacancyItems.length; i++) {
+        var vacancyItem = vacancyItems[i];
+
+        // Click "Show more" in the current vacancy if available
+        var showMoreButton = vacancyItem.querySelector('button.moreButton--JZye3');
+        if (showMoreButton) {
+            showMoreButton.click();
+            console.log(`HF_SE: "Show more" clicked in vacancy ${i + 1}`);
+            await new Promise(resolve => setTimeout(resolve, 1000));  // Wait for content to load
         }
 
-        console.log('HF_SE: Data loaded from all pages');
-        generateExcel(data);
+        // Click "Load more" if available within the current vacancy
+        async function clickLoadMoreInVacancy(vacancy) {
+            var loadMoreButton = vacancy.querySelector('div.buttons--xJ9TV button.moreButton--JZye3');
+            if (loadMoreButton) {
+                loadMoreButton.click();
+                console.log(`HF_SE: "Load more" clicked in vacancy ${i + 1}`);
+                await new Promise(resolve => setTimeout(resolve, 1000));  // Wait for content to load
+                await clickLoadMoreInVacancy(vacancy);  // Recursively click "Load more" until no button is found
+            }
+        }
+
+        await clickLoadMoreInVacancy(vacancyItem);
     }
+}
 
-    function clickElementAndWaitForLoad(element) {
-        return new Promise((resolve) => {
-            // Клик по элементу
-            element.click();
 
-            // Интервал для проверки наличия элемента с заголовком страницы
-            var checkExist = setInterval(function() {
-                // Поиск элемента заголовка
-                var titleElement = document.querySelector('h1[data-qa="applicant-card-title"]');
 
-                // Если элемент найден, остановить интервал
-                if (titleElement) {
-                    clearInterval(checkExist);
-
-                    // Установка задержки после нахождения элемента
-                    // Это необходимо для обеспечения полной загрузки всех данных на странице
-                    setTimeout(() => {
-                        resolve();
-                    }, 1000); // Задержка после нахождения элемента
-                }
-            }, 500); // Проверка каждые 500 миллисекунд
-        });
-    }
 
     function navigateBack() {
         return new Promise((resolve) => {
@@ -128,30 +205,114 @@
         });
     }
 
-    function extractData(doc) {
-        var titleElement = doc.querySelector('h1[data-qa="applicant-card-title"]');
-        var titleText = titleElement ? titleElement.innerText.trim() : 'N/A';
+function checkForOfferInComments() {
+    var logItems = document.querySelectorAll('div.comment--WsYTn');
 
-        var telegramText = extractTelegram(doc);
-        var phoneNumberText = extractPhoneNumber(doc);
-        var emailText = extractEmail(doc);
-        var linkedInText = extractLinkedIn(doc);
-        var companyText = extractCompany(doc);
-        var commentText = extractComment(doc);  // Extract the comment
+    console.log('HF_SE: Number of comment items found:', logItems.length);
+
+    for (var i = 0; i < logItems.length; i++) {
+        var logItem = logItems[i];
+        var textContent = logItem.innerText.trim();
+
+        console.log(`HF_SE: Checking comment item ${i + 1}:`, textContent);
+
+        if (textContent.includes("оффер") || textContent.includes("Оффер")) {
+            console.log('HF_SE: "оффер" or "Оффер" found in comment item:', i + 1);
+            return 'Yes';
+        }
+    }
+
+    console.log('HF_SE: No "оффер" or "Оффер" found in any comment.');
+    return 'No';
+}
 
 
-        var url = window.location.href;
+function extractAddedBy(doc) {
+    var logItems = doc.querySelectorAll('div.comment--mrgnn');
 
-        return {
-            'applicant-card-title': titleText,
-            'telegram': telegramText,
-            'phone_number': phoneNumberText,
-            'email': emailText,
-            'linkedin': linkedInText,
-            'company': companyText,
-            'comment': commentText,
-            'url': url
-        };
+    console.log('HF_SE: Number of log items found:', logItems.length);
+
+    // Loop through the log items in reverse order to find the last (chronologically first) "Applicant added" text
+    for (var i = logItems.length - 1; i >= 0; i--) {
+        var logItem = logItems[i];
+        var textContent = logItem.innerText.trim();
+
+        console.log(`HF_SE: Checking log item ${i + 1}:`, textContent);
+
+        if (textContent.includes("Applicant added")) {
+            console.log('HF_SE: "Applicant added" found in log item:', i + 1);
+
+            var nameElement = logItem.closest('div.logItem--FPeae').querySelector('span.username--iip9n');
+            var dateElement = logItem.closest('div.logItem--FPeae').querySelector('span[title]');
+
+            if (nameElement && dateElement) {
+                console.log('HF_SE: Name found:', nameElement.innerText.trim());
+                console.log('HF_SE: Date found:', dateElement.getAttribute('title'));
+                window.firstAddedDate = dateElement.getAttribute('title'); // Store the date globally
+                return nameElement.innerText.trim(); // Return the name
+            } else {
+                console.log('HF_SE: Name or date element not found.');
+            }
+        }
+    }
+
+    console.log('HF_SE: No "Applicant added" entry found.');
+    return 'N/A';
+}
+
+function extractAddedDate() {
+    return window.firstAddedDate || 'N/A';
+}
+
+
+    function extractTakenOn(doc) {
+    var vacancyItems = doc.querySelectorAll('li[data-qa="applicant_vacancy"]');
+    console.log('HF_SE: Number of vacancies found:', vacancyItems.length);
+    return vacancyItems.length >= 2 ? 'Yes' : 'No';
+}
+
+
+function extractData(doc) {
+    var titleElement = doc.querySelector('h1[data-qa="applicant-card-title"]');
+    var titleText = titleElement ? titleElement.innerText.trim() : 'N/A';
+
+    var telegramText = extractTelegram(doc);
+    var phoneNumberText = extractPhoneNumber(doc);
+    var emailText = extractEmail(doc);
+    var linkedInText = extractLinkedIn(doc);
+    var companyText = extractCompany(doc);
+    var comments = extractComment(doc);  // Extract both comments
+    var addedByText = extractAddedBy(doc);  // Extract the name of the person who added the applicant
+    var addedDateText = extractAddedDate();  // Extract the date and time when the applicant was added
+    var takenOnText = extractTakenOn(doc);  // Determine if the candidate is taken on at least 2 vacancies
+    var wasOfferedText = checkForOfferInComments();  // Check if the candidate was offered a position
+
+    var url = window.location.href;
+
+    return {
+        'applicant-card-title': titleText,
+        'telegram': telegramText,
+        'phone_number': phoneNumberText,
+        'email': emailText,
+        'linkedin': linkedInText,
+        'company': companyText,
+        'last_comment': comments.lastComment,  // Include the last comment
+        'second_last_comment': comments.secondLastComment,  // Include the second last comment
+        'added_by': addedByText,  // Include the added_by field in the final data
+        'added_date': addedDateText,  // Include the added_date field in the final data
+        'taken_on': takenOnText,  // Include the taken_on field in the final data
+        'was_offered': wasOfferedText,  // Include the was_offered field in the final data
+        'url': url
+    };
+}
+
+    function extractCompany(doc) {
+        var positionElement = doc.querySelector('div.position--dSSdW');
+        if (positionElement) {
+            var match = positionElement.innerText.match(/\(([^)]+)\)/);
+            return match ? match[1] : 'N/A';
+        }
+        return 'N/A';
     }
 
     function extractTelegram(doc) {
@@ -177,7 +338,8 @@
         return linkedInElement ? linkedInElement.href : 'N/A';
     }
 
-    function extractComment(doc) {
+
+function extractComment(doc) {
     // Select all comment spans within the log items
     var logItems = doc.querySelectorAll('div[data-qa="log_items"] div[data-qa="log_item"] div[class*="comment"] span');
 
@@ -189,26 +351,38 @@
         console.log(`HF_SE: Comment ${index + 1}:`, item.innerText.trim());
     });
 
-    // Get the first comment from the NodeList
-    var firstCommentElement = logItems[0];
+    // Initialize variables to store the last and second-last comments
+    var lastCommentText = 'N/A';
+    var secondLastCommentText = 'N/A';
 
-    // Return the text of the first comment, or 'N/A' if not found
-    var commentText = firstCommentElement ? firstCommentElement.innerText.trim() : 'N/A';
-
-    // Log the final comment that will be returned
-    console.log('HF_SE: Final comment extracted:', commentText);
-
-    return commentText;
+    // If there is at least one comment, get the last one
+    if (logItems.length > 0) {
+        lastCommentText = logItems[0].innerText.trim();
     }
 
-    function extractCompany(doc) {
-        var positionElement = doc.querySelector('div.position--dSSdW');
-        if (positionElement) {
-            var match = positionElement.innerText.match(/\(([^)]+)\)/);
-            return match ? match[1] : 'N/A';
-        }
-        return 'N/A';
+    // If there are at least two comments, get the second-last one
+    if (logItems.length > 1) {
+        secondLastCommentText = logItems[1].innerText.trim();
     }
+
+    // Log the extracted comments
+    console.log('HF_SE: Last comment extracted:', lastCommentText);
+    console.log('HF_SE: Second last comment extracted:', secondLastCommentText);
+
+    // Return an object containing both comments
+    return {
+        lastComment: lastCommentText,
+        secondLastComment: secondLastCommentText
+    };
+}
+
+
+
+
+
+
+
+
 
     function generateExcel(data) {
         var ws = XLSX.utils.json_to_sheet(data);
