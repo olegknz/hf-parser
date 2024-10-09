@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         SP_cook8
+// @name         SP_cook9Titles
 // @namespace    http://tampermonkey.net/
 // @version      0.95
 // @description  Extract data from links and save to Excel
@@ -362,6 +362,9 @@ function extractData(doc) {
     var titleElement = doc.querySelector('h1[data-qa="applicant-card-title"]');
     var titleText = titleElement ? titleElement.innerText.trim() : 'N/A';
 
+    var positionElement = doc.querySelector('div.position--dSSdW');
+    var positionText = positionElement ? positionElement.innerText.trim() : 'N/A'; // Extract the title
+
     var telegramText = extractTelegram(doc);
     var phoneNumberText = extractPhoneNumber(doc);
     var emailText = extractEmail(doc);
@@ -375,16 +378,11 @@ function extractData(doc) {
     var takenByText = extractTakenBy(doc);
     var takenLaterText = extractTakenLater(doc); // New function for taken_later
 
-
-
-
-
-
-
     var url = window.location.href;
 
     return {
         'applicant-card-title': titleText,
+        'position_title': positionText, // New column for the title
         'telegram': telegramText,
         'phone_number': phoneNumberText,
         'email': emailText,
@@ -401,6 +399,7 @@ function extractData(doc) {
         'url': url
     };
 }
+
 
 
 
