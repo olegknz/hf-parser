@@ -26,7 +26,7 @@
         if (buttonAdded) {
             return;
         }
-        var buttonContainer = document.querySelector('div.search--qvPi4.item--R7wgx');
+        var buttonContainer = document.querySelector('div.title--dUJju[data-qa="vacancy-block"]');
         if (buttonContainer) {
             console.log('HF_SE: Button container found:', buttonContainer);
 
@@ -228,7 +228,7 @@ function checkForOfferInComments() {
 
 
 function extractAddedBy(doc) {
-    var logItems = doc.querySelectorAll('div.comment--mrgnn');
+    var logItems = doc.querySelectorAll('div[data-qa="log_item"]'); // Updated selector
 
     console.log('HF_SE: Number of log items found:', logItems.length);
 
@@ -242,8 +242,9 @@ function extractAddedBy(doc) {
         if (textContent.includes("Applicant added")) {
             console.log('HF_SE: "Applicant added" found in log item:', i + 1);
 
-            var nameElement = logItem.closest('div.logItem--FPeae').querySelector('span.username--iip9n');
-            var dateElement = logItem.closest('div.logItem--FPeae').querySelector('span[title]');
+            // Updated selectors to extract username and date
+            var nameElement = logItem.querySelector('span.username--iip9n');
+            var dateElement = logItem.querySelector('span[title]');
 
             if (nameElement && dateElement) {
                 console.log('HF_SE: Name found:', nameElement.innerText.trim());
@@ -259,6 +260,7 @@ function extractAddedBy(doc) {
     console.log('HF_SE: No "Applicant added" entry found.');
     return 'N/A';
 }
+
 
 function extractAddedDate() {
     return window.firstAddedDate || 'N/A';
@@ -404,24 +406,57 @@ function extractData(doc) {
 
 
 
+function extractCompany(doc) {
+    // Locate the 'position--dSSdW' element
+    const positionElement = doc.querySelector('div.position--dSSdW');
 
-
-    function extractCompany(doc) {
-        var positionElement = doc.querySelector('div.position--dSSdW');
-        if (positionElement) {
-            var match = positionElement.innerText.match(/\(([^)]+)\)/);
-            return match ? match[1] : 'N/A';
+    if (positionElement) {
+        // Find the span containing the delimiter
+        const delimiterSpan = positionElement.querySelector('span.delimiter--idiKd');
+        if (delimiterSpan) {
+            // Get the next sibling node after the delimiter span
+            const companySpan = delimiterSpan.nextSibling;
+            if (companySpan && companySpan.nodeType === Node.TEXT_NODE) {
+                return companySpan.textContent.trim(); // Extract and return the company name
+            }
         }
-        return 'N/A';
+    }
+    return 'N/A'; // Default to 'N/A' if extraction fails
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+function extractTelegram(doc) {
+    // Locate the correct button specifically under the table structure
+    const telegramButton = doc.querySelector(
+        'dl.table--rwQnD dd.dd--vtf8C div.referenceWrapper--vGCKI > button.button--OyRVi.buttonText--tamFM'
+    );
+
+    if (telegramButton) {
+        const telegramText = telegramButton.innerText.trim(); // Extract the exact button text
+        console.log('HF_SE: Telegram extracted:', telegramText);
+        return telegramText;
     }
 
-    function extractTelegram(doc) {
-        var telegramElements = doc.querySelectorAll('button[data-qa="telegram"]');
-        if (telegramElements.length > 1) {
-            return telegramElements[1].innerText.trim();
-        }
-        return 'N/A';
-    }
+    console.log('HF_SE: Telegram button not found or incorrect button selected.');
+    return 'N/A'; // Return 'N/A' if the correct button is not found
+}
+
+
+
+
+
+
 
     function extractPhoneNumber(doc) {
         var phoneElement = doc.querySelector('a[href^="tel:"]');
