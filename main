@@ -85,9 +85,9 @@
                 clearInterval(checkExist);
                 setTimeout(() => {
                     resolve();
-                }, 1000);
+                }, 2000);
             }
-        }, 500);
+        }, 1000);
     });
 }
 
@@ -97,6 +97,8 @@ async function loadPagesAndExtractData(elements, numberToLoad) {
         var element = elements[i];
         window.firstAddedDate = 'N/A'; // Reset the date before processing a new page
         await clickElementAndWaitForLoad(element);
+        await handleAllShowMoreVacancies(); // Ensure the Personal Notes section is open
+        await handleAllVacanciesLoadMore();
         await ensurePersonalNotesOpen(); // Ensure the Personal Notes section is open
         const extractedData = await extractDataWithComments(document);
         data.push(extractedData);
@@ -107,46 +109,175 @@ async function loadPagesAndExtractData(elements, numberToLoad) {
     generateExcel(data);
 }
 
+async function handleAllShowMoreVacancies() {
+    console.log('HF_SE: Checking for all "Show more vacancies" buttons...');
 
-async function ensurePersonalNotesOpen() {
-    return new Promise((resolve) => {
-        var personalNotesTab = document.querySelector('a#tab-note');
-        if (personalNotesTab) {
-            personalNotesTab.click();
-            console.log('HF_SE: Personal Notes tab clicked');
+    let showMoreButtons;
 
-            // Function to click "Load more" within Personal Notes until it's no longer available
-            function clickLoadMoreButton() {
-                return new Promise((resolve) => {
-                    var personalNotesSection = document.querySelector('div[data-qa="applicant_comments"]');
-                    if (personalNotesSection) {
-                        var loadMoreButton = personalNotesSection.querySelector('button.moreButton--JZye3');
-                        if (loadMoreButton) {
-                            loadMoreButton.click();
-                            console.log('HF_SE: "Load more" button clicked in Personal Notes section');
-                            setTimeout(() => {
-                                resolve(clickLoadMoreButton()); // Recursively click until no more button
-                            }, 1000); // Wait for the content to load
-                        } else {
-                            resolve(); // No more button to click
-                        }
-                    } else {
-                        resolve(); // Personal Notes section not found
-                    }
-                });
+    // Loop until no more "Show more vacancies" buttons are found
+    do {
+        // Find all visible "Show more vacancies" buttons
+        showMoreButtons = Array.from(
+            document.querySelectorAll('div.buttonWrapper--vI9D1.moreButton--p39xA > button')
+        ).filter(button => button.offsetParent !== null); // Filter to only visible buttons
+
+        console.log(`HF_SE: Found ${showMoreButtons.length} "Show more vacancies" buttons.`);
+
+        for (const button of showMoreButtons) {
+            console.log('HF_SE: Clicking "Show more vacancies" button:', button.outerHTML);
+            button.click();
+
+            // Wait briefly for the new vacancies to load
+            console.log('HF_SE: Waiting for vacancies to load after clicking "Show more vacancies"...');
+            await new Promise((resolve) => setTimeout(resolve, 2000)); // Adjust delay if needed
+        }
+
+        // Wait briefly before rechecking for new buttons
+        await new Promise((resolve) => setTimeout(resolve, 1000)); // Adjust delay if needed
+    } while (showMoreButtons.length > 0);
+
+    console.log('HF_SE: No more "Show more vacancies" buttons found.');
+}
+
+
+
+
+
+async function handleAllVacanciesLoadMore() {
+    console.log('HF_SE: Looking for all vacancies on the page...');
+
+    // Select all vacancies, including both relevant and irrelevant ones
+    const allVacancies = document.querySelectorAll('li[class*="root--GhuQk"]');
+    if (allVacancies.length === 0) {
+        console.error('HF_SE: No vacancies found on the page.');
+        return; // Exit if no vacancies are found
+    }
+
+    console.log(`HF_SE: Found ${allVacancies.length} vacancies on the page.`);
+
+    // Parallelize vacancy processing
+    await Promise.all(
+        Array.from(allVacancies).map(async (vacancy, index) => {
+            console.log(`HF_SE: Processing vacancy ${index + 1} of ${allVacancies.length}.`);
+            console.log('HF_SE: Vacancy content:', vacancy.outerHTML);
+
+            async function clickAllLoadMoreButtonsInVacancy() {
+                let loadMoreButtons;
+
+                do {
+                    // Find all visible "Load more" buttons in the current vacancy
+                    loadMoreButtons = vacancy.querySelectorAll('div.moreButton--JZye3 > button');
+                    console.log(`HF_SE: Found ${loadMoreButtons.length} "Load more" buttons in vacancy ${index + 1}.`);
+
+                    // Log details of all buttons found
+                    loadMoreButtons.forEach((button, btnIndex) => {
+                        console.log(`HF_SE: Button ${btnIndex + 1} in vacancy ${index + 1}:`, button.outerHTML);
+                    });
+
+                    await Promise.all(
+                        Array.from(loadMoreButtons).map(async (button) => {
+                            if (button.offsetParent === null) {
+                                console.warn('HF_SE: Skipping hidden "Load more" button:', button.outerHTML);
+                                return;
+                            }
+
+                            console.log(`HF_SE: Clicking a "Load more" button in vacancy ${index + 1}:`, button.outerHTML);
+                            button.click();
+
+                            // Wait briefly for content to load after clicking
+                            await new Promise((resolve) => setTimeout(resolve, 500)); // Reduced delay
+                        })
+                    );
+
+                    // Wait briefly before re-checking for new buttons
+                    console.log('HF_SE: Re-checking for new "Load more" buttons...');
+                    await new Promise((resolve) => setTimeout(resolve, 500)); // Reduced delay
+                } while (loadMoreButtons.length > 0);
+
+                console.log(`HF_SE: No more "Load more" buttons left in vacancy ${index + 1}.`);
             }
 
-            // Wait for the content to load by adding a delay and clicking "Load more" if necessary
-            setTimeout(async () => {
-                await clickLoadMoreButton();
-                console.log('HF_SE: All "Load more" clicks completed or no button found');
-                resolve();
-            }, 3000); // 3-second delay to ensure initial content loads
-        } else {
-            resolve(); // If tab not found, resolve immediately
-        }
-    });
+            await clickAllLoadMoreButtonsInVacancy();
+        })
+    );
+
+    console.log('HF_SE: All "Load more" clicks completed for all vacancies.');
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+async function ensurePersonalNotesOpen() {
+    // Open the Personal Notes tab if it exists
+    const personalNotesTab = document.querySelector('a#tab-note');
+    if (personalNotesTab) {
+        personalNotesTab.click();
+        console.log('HF_SE: Personal Notes tab clicked');
+    } else {
+        console.error('HF_SE: Personal Notes tab not found');
+        return; // Exit if the tab is not available
+    }
+
+    // Function to click "Load more" buttons in a cycle until none are left
+    async function clickAllLoadMoreButtons() {
+        console.log('HF_SE: Looking for Personal Notes section...');
+        const personalNotesSection = document.querySelector('div[data-qa="applicant_comments"]');
+        if (personalNotesSection) {
+            console.log('HF_SE: Personal Notes section found.');
+
+            let loadMoreButtons;
+            do {
+                // Find all visible "Load more" buttons in the section
+                loadMoreButtons = personalNotesSection.querySelectorAll('div.moreButton--JZye3 > button');
+                console.log(`HF_SE: Found ${loadMoreButtons.length} "Load more" buttons.`);
+
+                for (const button of loadMoreButtons) {
+                    console.log('HF_SE: Clicking a "Load more" button:', button.outerHTML);
+                    button.click();
+
+                    // Wait for content to load after clicking
+                    console.log('HF_SE: Waiting for content to load...');
+                    await new Promise((resolve) => setTimeout(resolve, 2000)); // Adjust delay if needed
+                }
+
+                // Wait briefly before re-checking for new buttons
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+            } while (loadMoreButtons.length > 0);
+
+            console.log('HF_SE: No more "Load more" buttons left.');
+        } else {
+            console.error('HF_SE: Personal Notes section not found.');
+        }
+    }
+
+    // Wait for a short delay to ensure content is ready, then start clicking "Load more"
+    console.log('HF_SE: Waiting for 3 seconds before looking for "Load more" buttons...');
+    await new Promise((resolve) => setTimeout(resolve, 3000)); // Wait 3 seconds for the content to load
+    await clickAllLoadMoreButtons();
+
+    console.log('HF_SE: All "Load more" clicks completed or no buttons found.');
+}
+
+
+
+
+
+
+
+
+
+
+
 
 async function extractDataWithComments(doc) {
     // Open comments in all vacancies first
