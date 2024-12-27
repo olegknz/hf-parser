@@ -496,7 +496,7 @@ function extractData(doc) {
     var titleText = titleElement ? titleElement.innerText.trim() : 'N/A';
 
     var positionElement = doc.querySelector('div.position--dSSdW');
-    var positionText = positionElement ? positionElement.innerText.trim() : 'N/A'; // Extract the title
+    var positionText = positionElement ? positionElement.innerText.split('•')[0].trim() : 'N/A'; // Extract only the position part
 
     var telegramText = extractTelegram(doc);
     var phoneNumberText = extractPhoneNumber(doc);
@@ -515,7 +515,7 @@ function extractData(doc) {
 
     return {
         'applicant-card-title': titleText,
-        'position_title': positionText, // New column for the title
+        'position_title': positionText, // Updated extraction logic for title
         'telegram': telegramText,
         'phone_number': phoneNumberText,
         'email': emailText,
@@ -532,6 +532,7 @@ function extractData(doc) {
         'url': url
     };
 }
+
 
 
 
