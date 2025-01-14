@@ -4,15 +4,15 @@
 // @version      0.95
 // @description  Extract data from links and save to Excel
 // @author       Oleg Knyazev
-// @match        *://avito.huntflow.ru/*
-// @updateURL    https://github.com/emilia-hr/hf/raw/main/data.extr.script.user.js
-// @downloadURL  https://github.com/emilia-hr/hf/raw/main/data.extr.script.user.js
+// @match        ...
+// @updateURL    https://...
+// @downloadURL  https://...
 // @grant        GM_addStyle
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_xmlhttpRequest
 // @connect      *
-// @require      https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js
+// @require      ...
 // ==/UserScript==
 
 (function() {
